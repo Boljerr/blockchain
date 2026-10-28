@@ -4,5 +4,6 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
+  <Project Path="BlockChain.Tests/BlockChain.Tests.csproj" />
   <Project Path="BlockChain/BlockChain.csproj" />
 </Solution>
