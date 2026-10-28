@@ -55,3 +55,15 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# IDE settings and user-specific files
+.idea/
+.vs/
+*.user
+*.suo
+*.sln.docstates
+*.sln.DotSettings.user
+
+# Operating system files
+.DS_Store
+Thumbs.db
