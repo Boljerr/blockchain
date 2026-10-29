@@ -16,7 +16,7 @@ public class EndToEndTests
         Difficulty = 2
     };
 
-    [Fact(Skip = NeedsService)]
+    [Fact]
     public void Demo_RunsAsDesigned()
     {
         var service = new TransactionService();
@@ -47,7 +47,7 @@ public class EndToEndTests
         Assert.True(report.AccountingHolds);
     }
 
-    [Fact(Skip = NeedsService)]
+    [Fact]
     public void Replay_FromSavedInputs_IsIdentical()
     {
         var service = new TransactionService();
@@ -72,7 +72,7 @@ public class EndToEndTests
         }
     }
 
-    [Fact(Skip = NeedsService)]
+    [Fact]
     public void SmallRun_LastBlockWithinLimitAndFundsConserved()
     {
         var service = new TransactionService();
