@@ -49,7 +49,7 @@ public class ChainTests
         AssertUnchanged(before, chain, session);
     }
 
-    [Fact(Skip = "Needs the real TransactionService: only PrepareApply's ID recomputation catches this. Finish at integration.")]
+    [Fact]
     public void TryAccept_AlteredAmountWithOldId_ChangesNothing()
     {
         var service = new TransactionService();
