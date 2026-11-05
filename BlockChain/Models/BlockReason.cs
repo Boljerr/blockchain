@@ -6,6 +6,7 @@ public enum BlockReason
     PrevHashMismatch,
     UnsupportedVersion,
     InvalidTransactionCount,
+    MalformedTransactionId,
     TxRootMismatch,
     DifficultyMismatch,
     HashMismatch,

@@ -4,7 +4,7 @@ namespace BlockChain.Blocks;
 
 public static class BlockValidator
 {
-    public const int SupportedVersion = 1;
+    public const int SupportedVersion = 2;
 
     private static readonly BlockValidationResult Accepted = new(true, BlockReason.None, "Block is valid.");
 
@@ -31,6 +31,11 @@ public static class BlockValidator
         if (txCount < 1 || txCount > maxTxCount)
             return Reject(BlockReason.InvalidTransactionCount,
                 $"Block has {txCount} transactions; allowed range is 1 to {maxTxCount}.");
+
+        Transaction? malformed = block.Transactions.FirstOrDefault(t => !TxRoot.IsWellFormedId(t.TransactionId));
+        if (malformed is not null)
+            return Reject(BlockReason.MalformedTransactionId,
+                $"Transaction ID '{malformed.TransactionId}' is not 64 lowercase hex characters.");
 
         string recomputedRoot = TxRoot.Compute(block.Transactions);
         if (!string.Equals(recomputedRoot, header.TxRoot, StringComparison.Ordinal))
