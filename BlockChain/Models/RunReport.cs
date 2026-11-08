@@ -9,6 +9,8 @@ public sealed record BlockReport
     public ulong Attempts { get; }
 
     public TimeSpan MiningTime { get; }
+    
+    public MiningCompetitionResult? Competition { get; init; }
 
     public IReadOnlyList<RemainingTransaction> Deferred { get; }
 

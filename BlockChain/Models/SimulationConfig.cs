@@ -19,5 +19,9 @@ public sealed record SimulationConfig
     
     // Unix timestamp to be able to reproduce
     public long TimestampBase { get; init; } = 1_793_206_326; // 18:52
-    
+
+    public ulong InitialMiningAttempts { get; init; } = 1_000;
+
+    public ulong MaxMiningAttemptsPerCandidate { get; init; } = 50_000_000;
+
 }
