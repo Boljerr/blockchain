@@ -6,10 +6,29 @@ using static System.FormattableString;
 
 CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
 
+bool? parallelOverride = null;
+
+if (args.Length > 0)
+{
+    string lastArgument = args[args.Length - 1];
+
+    if (lastArgument is "--parallel" or "--sequential")
+    {
+        parallelOverride = lastArgument == "--parallel";
+
+        Array.Resize(ref args, args.Length - 1);
+    }
+}
+
 RunOptions? options = RunOptions.Parse(args);
+
 if (options is null)
 {
     Console.Error.WriteLine(RunOptions.Usage);
+
+    Console.Error.WriteLine(
+        "Append --parallel or --sequential to choose the mining mode.");
+
     return 2;
 }
 
@@ -17,18 +36,81 @@ var service = new TransactionService();
 
 try
 {
-    (SimulationInput input, string blocksCsvPath) = Prepare(options, service);
+    SimulationInput input = options.Mode switch
+    {
+        RunMode.Demo => service.CreateDemo(),
 
-    RunReport report = new Runner(service).Run(input);
+        RunMode.Full => service.Generate(new SimulationConfig
+        {
+            GenerationSeed = options.Seed,
+            SelectionSeed = options.Seed + 1
+        }),
 
+        RunMode.Replay => service.LoadInputs(options.ReplayFolder!),
+
+        _ => throw new InvalidOperationException(
+            "Unsupported run mode.")
+    };
+
+    if (parallelOverride is { } parallel)
+    {
+        input = new SimulationInput(
+            input.Configuration with
+            {
+                ParallelMining = parallel
+            },
+            input.Users,
+            input.Transactions,
+            input.PostRunSubmissions);
+    }
+
+    string miningMode = input.Configuration.ParallelMining
+        ? "parallel"
+        : "sequential";
+
+    string suffix = input.Configuration.ParallelMining
+        ? "-parallel"
+        : "";
+
+    string folder = options.Mode switch
+    {
+        RunMode.Demo => Path.Combine(
+            "runs",
+            $"demo{suffix}"),
+
+        RunMode.Full => Path.Combine(
+            "runs",
+            Invariant($"full-seed-{options.Seed}{suffix}")),
+
+        RunMode.Replay => options.ReplayFolder!,
+
+        _ => throw new InvalidOperationException(
+            "Unsupported run mode.")
+    };
+
+    if (options.Mode != RunMode.Replay)
+        service.SaveInputs(input, folder);
+
+    RunReport report = await new Runner(service).RunAsync(input);
+
+    Console.WriteLine($"Mining mode: {miningMode}");
     RunReportFormatter.Write(report, Console.Out);
-    using (var csv = new StreamWriter(blocksCsvPath))
+
+    string csvName = options.Mode == RunMode.Replay
+        ? $"blocks.replay.{miningMode}.csv"
+        : "blocks.csv";
+
+    using (var csv = new StreamWriter(
+               Path.Combine(folder, csvName)))
+    {
         BlocksCsv.Write(report, csv);
+    }
 
     if (!report.AccountingHolds)
     {
         Console.Error.WriteLine(Invariant(
             $"WARNING: accounting invariant failed: {report.GeneratedCount} submitted != {report.IncludedCount} included + {report.Rejections.Count} rejected + {report.Remaining.Count} remaining"));
+
         return 1;
     }
 
@@ -43,34 +125,4 @@ catch (IOException ex)
 {
     Console.Error.WriteLine($"Run folder error: {ex.Message}");
     return 1;
-}
-
-static (SimulationInput Input, string BlocksCsvPath) Prepare(RunOptions options, ITransactionService service)
-{
-    switch (options.Mode)
-    {
-        case RunMode.Demo:
-        {
-            SimulationInput demo = service.CreateDemo();
-            return (demo, SaveInputs(service, demo, Path.Combine("runs", "demo")));
-        }
-        case RunMode.Full:
-        {
-            var config = new SimulationConfig { GenerationSeed = options.Seed, SelectionSeed = options.Seed + 1 };
-            SimulationInput full = service.Generate(config);
-            return (full, SaveInputs(service, full, Path.Combine("runs", Invariant($"full-seed-{options.Seed}"))));
-        }
-        default:
-        {
-            string folder = options.ReplayFolder!;
-            return (service.LoadInputs(folder), Path.Combine(folder, "blocks.replay.csv"));
-        }
-    }
-}
-
-static string SaveInputs(ITransactionService service, SimulationInput input, string folder)
-{
-    Directory.CreateDirectory(folder);
-    service.SaveInputs(input, folder);
-    return Path.Combine(folder, "blocks.csv");
 }

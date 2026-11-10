@@ -17,6 +17,9 @@ public sealed class Runner
     }
 
     public RunReport Run(SimulationInput input)
+        => RunAsync(input).GetAwaiter().GetResult();
+
+    public async Task<RunReport> RunAsync(SimulationInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
 
@@ -24,10 +27,15 @@ public sealed class Runner
         var stopwatch = Stopwatch.StartNew();
 
         TransactionSession session = _service.CreateSession(input.Users);
+
         foreach (Transaction transaction in input.Transactions)
             _service.AddToPool(session, transaction);
 
-        var chain = new Chain(_service, config.Difficulty, config.CandidateLimit);
+        var chain = new Chain(
+            _service,
+            config.Difficulty,
+            config.CandidateLimit);
+
         var selectionRandom = new Random(config.SelectionSeed);
         var blocks = new List<BlockReport>();
 
@@ -38,7 +46,7 @@ public sealed class Runner
             var candidates = new List<MiningCandidate>(
                 MiningCoordinator.CandidateCount);
 
-            // Build all five before mining or accepting anything.
+            // Every candidate starts from the same confirmed state.
             for (int number = 1;
                  number <= MiningCoordinator.CandidateCount;
                  number++)
@@ -63,13 +71,29 @@ public sealed class Runner
                     selection.DeferredTransactions));
             }
 
-            if (candidates.All(candidate => candidate.Transactions.Count == 0))
+            if (candidates.All(candidate =>
+                    candidate.Transactions.Count == 0))
+            {
                 break;
+            }
 
-            MiningCompetitionResult competition = MiningCoordinator.Mine(
-                candidates,
-                initialAttempts: config.InitialMiningAttempts,
-                maxAttemptsPerCandidate: config.MaxMiningAttemptsPerCandidate);
+            MiningCompetitionResult competition;
+
+            if (config.ParallelMining)
+            {
+                competition = await MiningCoordinator.MineParallelAsync(
+                    candidates,
+                    config.InitialMiningAttempts,
+                    config.MaxMiningAttemptsPerCandidate)
+                    .ConfigureAwait(false);
+            }
+            else
+            {
+                competition = MiningCoordinator.Mine(
+                    candidates,
+                    config.InitialMiningAttempts,
+                    config.MaxMiningAttemptsPerCandidate);
+            }
 
             if (competition.Winner is not { } winner ||
                 competition.Block is not { } minedBlock)
@@ -90,7 +114,10 @@ public sealed class Runner
                     details);
             }
 
-            AcceptResult accepted = chain.TryAccept(minedBlock, session);
+            // Parallel workers have finished before acceptance begins.
+            AcceptResult accepted = chain.TryAccept(
+                minedBlock,
+                session);
 
             if (!accepted.Accepted)
             {
@@ -101,7 +128,8 @@ public sealed class Runner
             }
 
             CandidateMiningReport winnerReport = competition.Candidates
-                .Single(candidate => candidate.CandidateNumber == winner.Number);
+                .Single(candidate =>
+                    candidate.CandidateNumber == winner.Number);
 
             blocks.Add(new BlockReport(
                 height,
@@ -114,12 +142,18 @@ public sealed class Runner
             });
         }
 
-        IReadOnlyList<RemainingTransaction> remaining = _service.ExplainRemaining(session);
-        RejectedSubmission[] rejections = session.RejectedSubmissions.ToArray();
+        IReadOnlyList<RemainingTransaction> remaining =
+            _service.ExplainRemaining(session);
+
+        RejectedSubmission[] rejections =
+            session.RejectedSubmissions.ToArray();
+
         LedgerSnapshot finalLedger = session.Ledger;
 
         SubmissionOutcome[] postRunOutcomes = input.PostRunSubmissions
-            .Select(transaction => new SubmissionOutcome(transaction, _service.AddToPool(session, transaction)))
+            .Select(transaction => new SubmissionOutcome(
+                transaction,
+                _service.AddToPool(session, transaction)))
             .ToArray();
 
         stopwatch.Stop();
@@ -133,7 +167,7 @@ public sealed class Runner
             rejections,
             remaining,
             postRunOutcomes,
-            input.Users.Sum(u => u.InitialBalance),
+            input.Users.Sum(user => user.InitialBalance),
             finalLedger,
             stopwatch.Elapsed);
     }

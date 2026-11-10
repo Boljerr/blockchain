@@ -14,7 +14,7 @@ public sealed record SimulationConfig
     public int GenerationSeed { get; init; } = 676767;
     public int SelectionSeed { get; init; } = 676768;
 
-    public int Difficulty { get; init; } = 3;
+    public int Difficulty { get; init; } = 5;
     public int CandidateLimit { get; init; } = 100;
     
     // Unix timestamp to be able to reproduce
@@ -23,5 +23,7 @@ public sealed record SimulationConfig
     public ulong InitialMiningAttempts { get; init; } = 1_000;
 
     public ulong MaxMiningAttemptsPerCandidate { get; init; } = 50_000_000;
+    
+    public bool ParallelMining { get; init; }
 
 }

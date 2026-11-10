@@ -14,36 +14,24 @@ public static class MiningCoordinator
     {
         ArgumentNullException.ThrowIfNull(candidates);
 
-        if (candidates.Count != CandidateCount ||
-            candidates.Any(c => c.Transactions.Count is < 1 or > 100))
-        {
-            throw new ArgumentException(
-                "Provide five candidates with 1 to 100 transactions each.",
-                nameof(candidates));
-        }
+        MiningCandidate[] snapshot = candidates.ToArray();
 
-        if (initialAttempts == 0)
-            throw new ArgumentOutOfRangeException(nameof(initialAttempts));
+        ValidateInputs(
+            snapshot,
+            initialAttempts,
+            maxAttemptsPerCandidate);
 
-        if (maxAttemptsPerCandidate == 0 ||
-            maxAttemptsPerCandidate > ulong.MaxValue / CandidateCount)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(maxAttemptsPerCandidate));
-        }
-
-        var stopwatch = Stopwatch.StartNew();
-
-        // One progress record for each candidate.
-        CandidateMiningReport[] progress = candidates
+        CandidateMiningReport[] progress = snapshot
             .Select(candidate => new CandidateMiningReport(
-                CandidateNumber: candidate.Number,
+                candidate.Number,
                 Attempts: 0,
                 NextNonce: candidate.Header.Nonce,
                 MiningTime: TimeSpan.Zero,
                 LastStatus: null,
                 AttemptLimitReached: false))
             .ToArray();
+
+        var stopwatch = Stopwatch.StartNew();
 
         MiningCompetitionResult Finish(
             MiningCandidate? winner,
@@ -58,12 +46,15 @@ public static class MiningCoordinator
                 stopwatch.Elapsed);
         }
 
-        ulong budget = Math.Min(initialAttempts, maxAttemptsPerCandidate);
+        ulong budget = Math.Min(
+            initialAttempts,
+            maxAttemptsPerCandidate);
 
-        while (progress.Any(p =>
-                   p.NextNonce.HasValue && !p.AttemptLimitReached))
+        while (progress.Any(candidate =>
+                   candidate.NextNonce.HasValue &&
+                   !candidate.AttemptLimitReached))
         {
-            for (int index = 0; index < candidates.Count; index++)
+            for (int index = 0; index < snapshot.Length; index++)
             {
                 CandidateMiningReport current = progress[index];
 
@@ -73,7 +64,7 @@ public static class MiningCoordinator
                     continue;
                 }
 
-                MiningCandidate candidate = candidates[index];
+                MiningCandidate candidate = snapshot[index];
 
                 ulong remaining =
                     maxAttemptsPerCandidate - current.Attempts;
@@ -101,12 +92,163 @@ public static class MiningCoordinator
                     return Finish(candidate, block);
             }
 
-            // Increase the budget safely for the next round.
             budget = budget > maxAttemptsPerCandidate / 2
                 ? maxAttemptsPerCandidate
                 : budget * 2;
         }
 
         return Finish(winner: null, block: null);
+    }
+
+    public static async Task<MiningCompetitionResult> MineParallelAsync(
+        IReadOnlyList<MiningCandidate> candidates,
+        ulong initialAttempts = 1_000,
+        ulong maxAttemptsPerCandidate = Miner.DefaultMaxAttempts,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(candidates);
+
+        MiningCandidate[] snapshot = candidates.ToArray();
+
+        ValidateInputs(
+            snapshot,
+            initialAttempts,
+            maxAttemptsPerCandidate);
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken);
+
+        var stopwatch = Stopwatch.StartNew();
+        var winnerLock = new object();
+
+        MiningCandidate? winner = null;
+        Block? winningBlock = null;
+
+        CandidateMiningReport SearchCandidate(MiningCandidate candidate)
+        {
+            var progress = new CandidateMiningReport(
+                candidate.Number,
+                Attempts: 0,
+                NextNonce: candidate.Header.Nonce,
+                MiningTime: TimeSpan.Zero,
+                LastStatus: null,
+                AttemptLimitReached: false);
+
+            ulong budget = Math.Min(
+                initialAttempts,
+                maxAttemptsPerCandidate);
+
+            try
+            {
+                while (progress.NextNonce is { } nextNonce &&
+                       !progress.AttemptLimitReached)
+                {
+                    ulong remaining =
+                        maxAttemptsPerCandidate - progress.Attempts;
+
+                    MiningSearchResult search = Miner.SearchRange(
+                        candidate.Header,
+                        candidate.Transactions,
+                        nextNonce,
+                        Math.Min(budget, remaining),
+                        stop.Token);
+
+                    ulong attempts = progress.Attempts + search.Attempts;
+
+                    progress = progress with
+                    {
+                        Attempts = attempts,
+                        NextNonce = search.NextNonce,
+                        MiningTime = progress.MiningTime + search.Elapsed,
+                        LastStatus = search.Status,
+                        AttemptLimitReached =
+                            attempts >= maxAttemptsPerCandidate &&
+                            search.Block is null
+                    };
+
+                    if (search.Block is { } block)
+                    {
+                        // Only one worker can register the winner.
+                        lock (winnerLock)
+                        {
+                            if (winner is null &&
+                                !stop.IsCancellationRequested)
+                            {
+                                winner = candidate;
+                                winningBlock = block;
+                                stop.Cancel();
+                            }
+                        }
+
+                        break;
+                    }
+
+                    if (search.Status == MiningSearchStatus.Cancelled)
+                        break;
+
+                    budget = budget > maxAttemptsPerCandidate / 2
+                        ? maxAttemptsPerCandidate
+                        : budget * 2;
+                }
+
+                return progress;
+            }
+            catch
+            {
+                // Stop competing searches if a worker fails
+                stop.Cancel();
+                throw;
+            }
+        }
+
+        Task<CandidateMiningReport>[] workers = snapshot
+            .Select(candidate =>
+                Task.Run(() => SearchCandidate(candidate)))
+            .ToArray();
+
+        // Collect reports after every worker has stopped.
+        CandidateMiningReport[] reports =
+            await Task.WhenAll(workers).ConfigureAwait(false);
+
+        cancellationToken.ThrowIfCancellationRequested();
+        stopwatch.Stop();
+
+        return new MiningCompetitionResult(
+            winner,
+            winningBlock,
+            Array.AsReadOnly(reports),
+            stopwatch.Elapsed);
+    }
+
+    private static void ValidateInputs(
+        IReadOnlyList<MiningCandidate> candidates,
+        ulong initialAttempts,
+        ulong maxAttemptsPerCandidate)
+    {
+        if (candidates.Count != CandidateCount ||
+            candidates.Any(candidate => candidate is null ||
+                candidate.Transactions.Count is < 1 or > 100))
+        {
+            throw new ArgumentException(
+                $"Provide {CandidateCount} candidates with 1 to 100 transactions each.",
+                nameof(candidates));
+        }
+
+        if (initialAttempts == 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(initialAttempts),
+                "The initial attempt budget must be positive.");
+        }
+
+        if (maxAttemptsPerCandidate == 0 ||
+            maxAttemptsPerCandidate > ulong.MaxValue / CandidateCount)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(maxAttemptsPerCandidate),
+                "The attempt limit must be positive and allow a safe total.");
+        }
     }
 }
