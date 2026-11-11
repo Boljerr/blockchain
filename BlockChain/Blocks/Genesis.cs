@@ -9,7 +9,7 @@ public static class Genesis
         var header = new BlockHeader(
             PrevHash: new string('0', 64),
             Timestamp: 0,
-            Version: 1,
+            Version: BlockValidator.SupportedVersion,
             TxRoot: TxRoot.Compute([]),
             Nonce: 0,
             Difficulty: difficulty);

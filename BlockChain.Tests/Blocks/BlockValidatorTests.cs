@@ -34,12 +34,35 @@ public class BlockValidatorTests
         AssertRejected(Validate(block), BlockReason.PrevHashMismatch);
     }
 
-    [Fact]
-    public void Validate_Version2_IsRejected()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    public void Validate_UnsupportedVersion_IsRejected(int version)
     {
-        Block block = MineBlock(Transactions, header => header with { Version = 2 });
+        Block block = MineBlock(Transactions, header => header with { Version = version });
 
         AssertRejected(Validate(block), BlockReason.UnsupportedVersion);
+    }
+
+    public static TheoryData<string> MalformedIds => new()
+    {
+        Transactions[0].TransactionId.ToUpperInvariant(),
+        Transactions[0].TransactionId[..63],
+        new string('g', 64),
+        ""
+    };
+
+    [Theory]
+    [MemberData(nameof(MalformedIds))]
+    public void Validate_MalformedTransactionId_IsRejected(string badId)
+    {
+        Transaction malformed = Transactions[0] with { TransactionId = badId };
+        Transaction[] transactions = [malformed, Transactions[1]];
+        BlockHeader template = CreateTemplate([Transactions[0], Transactions[1]]);
+
+        Block block = Miner.Mine(template, transactions).Block;
+
+        AssertRejected(Validate(block), BlockReason.MalformedTransactionId);
     }
 
     [Fact]

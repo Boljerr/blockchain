@@ -83,6 +83,34 @@ public class EndToEndTests
         Assert.Equal(report.InitialTotal, report.FinalTotal);
     }
 
+    [Fact]
+    public void Run_DeferredPaymentIsRecheckedAfterAcceptedBlock_AndUnaffordableOneRemainsWithReason()
+    {
+        string a = new('a', 64);
+        string b = new('b', 64);
+        string c = new('c', 64);
+        Transaction funding = TestTransactions.Create(c, a, 50, 1);
+        Transaction payment = TestTransactions.Create(a, b, 120, 2);
+        Transaction unaffordable = TestTransactions.Create(b, c, 1_000, 3);
+        var input = new SimulationInput(
+            new SimulationConfig { Difficulty = 2, SelectionSeed = 0 },
+            [new User("A", a, 100), new User("B", b, 100), new User("C", c, 100)],
+            [funding, payment, unaffordable],
+            []);
+
+        RunReport report = new Runner(new TransactionService()).Run(input);
+
+        int deferredIn = report.Blocks.First(r => r.Deferred.Any(d => d.Transaction == payment)).Height;
+        int includedIn = report.Blocks.Single(r => r.Block.Transactions.Contains(payment)).Height;
+        Assert.True(includedIn > deferredIn);
+
+        RemainingTransaction remaining = Assert.Single(report.Remaining);
+        Assert.Equal(unaffordable, remaining.Transaction);
+        Assert.Equal(TransactionReason.InsufficientBalance, remaining.ReasonCode);
+        Assert.True(report.AccountingHolds);
+        Assert.True(report.FundsConserved);
+    }
+
     private static long FinalBalance(RunReport report, SimulationInput input, string name)
         => report.FinalLedger.Balances[input.Users.Single(u => u.Name == name).PublicKey];
 
