@@ -47,7 +47,8 @@ public static class Miner
                 "Difficulty must be between 0 and 64.");
         }
 
-        string prefix = new('0', template.Difficulty);
+        int requiredZeroBits = template.Difficulty * 4;
+        var hasher = new NonceHasher(template);
 
         var stopwatch = Stopwatch.StartNew();
 
@@ -79,8 +80,7 @@ public static class Miner
                     nextNonce: nonce);
             }
 
-            BlockHeader header = template with { Nonce = nonce };
-            string hash = BlockHasher.ComputeHash(header);
+            bool solved = hasher.Digest(nonce).LeadingZeroBits >= requiredZeroBits;
 
             attempts++;
 
@@ -88,9 +88,10 @@ public static class Miner
                 ? null
                 : nonce + 1;
 
-            if (hash.StartsWith(prefix, StringComparison.Ordinal))
+            if (solved)
             {
-                var block = new Block(header, transactions, hash);
+                BlockHeader header = template with { Nonce = nonce };
+                var block = new Block(header, transactions, BlockHasher.ComputeHash(header));
 
                 return Finish(
                     MiningSearchStatus.Found,
