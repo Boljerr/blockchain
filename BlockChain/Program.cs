@@ -121,8 +121,13 @@ catch (InvalidOperationException ex)
     Console.Error.WriteLine($"Run stopped: {ex.Message}");
     return 1;
 }
-catch (IOException ex)
+catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
 {
     Console.Error.WriteLine($"Run folder error: {ex.Message}");
     return 1;
+}
+catch (InvalidDataException ex)
+{
+    Console.Error.WriteLine($"Saved input error: {ex.Message}");
+    return 3;
 }

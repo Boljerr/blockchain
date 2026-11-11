@@ -156,17 +156,40 @@ public sealed class TransactionService : ITransactionService
             RespectNullableAnnotations = true
         };
 
+        SimulationInput? input;
+
         try
         {
-            return JsonSerializer.Deserialize<SimulationInput>(json, options)
-                   ?? throw new InvalidDataException(
-                       "Saved simulation input cannot be null.");
+            input = JsonSerializer.Deserialize<SimulationInput>(json, options);
         }
         catch (JsonException ex)
         {
             throw new InvalidDataException(
-                $"Invalid simulation input in {path}", ex);
+                $"{path} is not valid simulation input JSON: {ex.Message}", ex);
         }
+
+        if (input is null)
+        {
+            throw new InvalidDataException(
+                $"{path} contains null instead of simulation input.");
+        }
+
+        IReadOnlyList<string> problems = SimulationInputValidator.FindProblems(input);
+
+        if (problems.Count > 0)
+        {
+            const int shown = 10;
+            string more = problems.Count > shown
+                ? $"{Environment.NewLine}  ... and {problems.Count - shown} more"
+                : "";
+
+            throw new InvalidDataException(
+                $"{path} has {problems.Count} problem(s):{Environment.NewLine}  " +
+                string.Join($"{Environment.NewLine}  ", problems.Take(shown)) +
+                more);
+        }
+
+        return input;
     }
     public TransactionSession CreateSession(IReadOnlyList<User> users)
     {
