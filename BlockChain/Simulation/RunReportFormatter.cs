@@ -48,6 +48,24 @@ public static class RunReportFormatter
         writer.WriteLine(Invariant($"  attempts:     {report.Attempts}"));
         writer.WriteLine(Invariant($"  mining time:  {report.MiningTime.TotalMilliseconds:F1} ms"));
         writer.WriteLine(Invariant($"  deferred:     {report.Deferred.Count}"));
+        if (report.Competition is { } competition)
+        {
+            writer.WriteLine(Invariant(
+                $"  winning candidate: {competition.Winner?.Number}"));
+
+            writer.WriteLine(Invariant(
+                $"  total attempts:    {competition.TotalAttempts}"));
+
+            foreach (CandidateMiningReport candidate in competition.Candidates)
+            {
+                string status = candidate.AttemptLimitReached
+                    ? "AttemptLimitReached"
+                    : candidate.LastStatus?.ToString() ?? "NotStarted";
+
+                writer.WriteLine(Invariant(
+                    $"  candidate {candidate.CandidateNumber}: {candidate.Attempts} attempts, {candidate.MiningTime.TotalMilliseconds:F1} ms, {status}"));
+            }
+        }
         writer.WriteLine();
     }
 
@@ -69,6 +87,8 @@ public static class RunReportFormatter
         writer.WriteLine(Invariant($"  generation seed:        {config.GenerationSeed}"));
         writer.WriteLine(Invariant($"  selection seed:         {config.SelectionSeed}"));
         writer.WriteLine(Invariant($"  difficulty:             {config.Difficulty}"));
+        writer.WriteLine(Invariant($"  initial candidate budget: {config.InitialMiningAttempts}"));
+        writer.WriteLine(Invariant($"  candidate attempt limit:  {config.MaxMiningAttemptsPerCandidate}"));
         writer.WriteLine(Invariant($"  mining time:            {report.MiningTime.TotalMilliseconds:F0} ms"));
         writer.WriteLine(Invariant($"  total time:             {report.TotalTime.TotalMilliseconds:F0} ms"));
     }

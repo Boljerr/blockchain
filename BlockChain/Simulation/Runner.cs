@@ -17,6 +17,9 @@ public sealed class Runner
     }
 
     public RunReport Run(SimulationInput input)
+        => RunAsync(input).GetAwaiter().GetResult();
+
+    public async Task<RunReport> RunAsync(SimulationInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
 
@@ -24,45 +27,133 @@ public sealed class Runner
         var stopwatch = Stopwatch.StartNew();
 
         TransactionSession session = _service.CreateSession(input.Users);
+
         foreach (Transaction transaction in input.Transactions)
             _service.AddToPool(session, transaction);
 
-        var chain = new Chain(_service, config.Difficulty, config.CandidateLimit);
+        var chain = new Chain(
+            _service,
+            config.Difficulty,
+            config.CandidateLimit);
+
         var selectionRandom = new Random(config.SelectionSeed);
         var blocks = new List<BlockReport>();
 
         while (true)
         {
-            CandidateSelection selection = _service.SelectCandidate(session, selectionRandom, config.CandidateLimit);
-            if (selection.SelectedTransactions.Count == 0)
-                break;
-
             int height = chain.Height + 1;
-            var template = new BlockHeader(
-                PrevHash: chain.TipHash,
-                Timestamp: config.TimestampBase + height,
-                Version: BlockValidator.SupportedVersion,
-                TxRoot: TxRoot.Compute(selection.SelectedTransactions),
-                Nonce: 0,
-                Difficulty: config.Difficulty);
 
-            MineResult mined = Miner.Mine(template, selection.SelectedTransactions);
+            var candidates = new List<MiningCandidate>(
+                MiningCoordinator.CandidateCount);
 
-            AcceptResult accepted = chain.TryAccept(mined.Block, session);
+            // Every candidate starts from the same confirmed state.
+            for (int number = 1;
+                 number <= MiningCoordinator.CandidateCount;
+                 number++)
+            {
+                CandidateSelection selection = _service.SelectCandidate(
+                    session,
+                    selectionRandom,
+                    config.CandidateLimit);
+
+                var header = new BlockHeader(
+                    PrevHash: chain.TipHash,
+                    Timestamp: checked(config.TimestampBase + height),
+                    Version: BlockValidator.SupportedVersion,
+                    TxRoot: TxRoot.Compute(selection.SelectedTransactions),
+                    Nonce: 0,
+                    Difficulty: config.Difficulty);
+
+                candidates.Add(new MiningCandidate(
+                    number,
+                    header,
+                    selection.SelectedTransactions,
+                    selection.DeferredTransactions));
+            }
+
+            if (candidates.All(candidate =>
+                    candidate.Transactions.Count == 0))
+            {
+                break;
+            }
+
+            MiningCompetitionResult competition;
+
+            if (config.ParallelMining)
+            {
+                competition = await MiningCoordinator.MineParallelAsync(
+                    candidates,
+                    config.InitialMiningAttempts,
+                    config.MaxMiningAttemptsPerCandidate)
+                    .ConfigureAwait(false);
+            }
+            else
+            {
+                competition = MiningCoordinator.Mine(
+                    candidates,
+                    config.InitialMiningAttempts,
+                    config.MaxMiningAttemptsPerCandidate);
+            }
+
+            if (competition.Winner is not { } winner ||
+                competition.Block is not { } minedBlock)
+            {
+                string details = string.Join(
+                    Environment.NewLine,
+                    competition.Candidates.Select(candidate =>
+                        $"  Candidate {candidate.CandidateNumber}: " +
+                        $"{candidate.Attempts} attempts, " +
+                        $"{candidate.MiningTime.TotalMilliseconds:F1} ms, " +
+                        $"last status {candidate.LastStatus}, " +
+                        $"attempt limit reached {candidate.AttemptLimitReached}"));
+
+                throw new InvalidOperationException(
+                    $"Mining stopped at height {height}. " +
+                    "All candidates exhausted their attempt or nonce limits." +
+                    Environment.NewLine +
+                    details);
+            }
+
+            // Parallel workers have finished before acceptance begins.
+            AcceptResult accepted = chain.TryAccept(
+                minedBlock,
+                session);
+
             if (!accepted.Accepted)
+            {
                 throw new InvalidOperationException(
                     $"Own block at height {height} was rejected " +
-                    $"({accepted.BlockReason}, {accepted.TransactionReason}): {accepted.Explanation}");
+                    $"({accepted.BlockReason}, {accepted.TransactionReason}): " +
+                    accepted.Explanation);
+            }
 
-            blocks.Add(new BlockReport(height, mined.Block, mined.Attempts, mined.Elapsed, selection.DeferredTransactions));
+            CandidateMiningReport winnerReport = competition.Candidates
+                .Single(candidate =>
+                    candidate.CandidateNumber == winner.Number);
+
+            blocks.Add(new BlockReport(
+                height,
+                minedBlock,
+                winnerReport.Attempts,
+                competition.Elapsed,
+                winner.DeferredTransactions)
+            {
+                Competition = competition
+            });
         }
 
-        IReadOnlyList<RemainingTransaction> remaining = _service.ExplainRemaining(session);
-        RejectedSubmission[] rejections = session.RejectedSubmissions.ToArray();
+        IReadOnlyList<RemainingTransaction> remaining =
+            _service.ExplainRemaining(session);
+
+        RejectedSubmission[] rejections =
+            session.RejectedSubmissions.ToArray();
+
         LedgerSnapshot finalLedger = session.Ledger;
 
         SubmissionOutcome[] postRunOutcomes = input.PostRunSubmissions
-            .Select(transaction => new SubmissionOutcome(transaction, _service.AddToPool(session, transaction)))
+            .Select(transaction => new SubmissionOutcome(
+                transaction,
+                _service.AddToPool(session, transaction)))
             .ToArray();
 
         stopwatch.Stop();
@@ -76,7 +167,7 @@ public sealed class Runner
             rejections,
             remaining,
             postRunOutcomes,
-            input.Users.Sum(u => u.InitialBalance),
+            input.Users.Sum(user => user.InitialBalance),
             finalLedger,
             stopwatch.Elapsed);
     }
