@@ -152,21 +152,35 @@ Patikrinta 11 CLI scenarijų: demonstracija ir visas rinkinys abiem režimais, n
 | Įvesčių patikra    | Tikrinama konfigūracija, sąrašų dydžiai, raktai, balansai, perpildymas ir `null`. Sugadintas failas grąžina priežastį ir kodą 3.                                                                                                                                      |
 | Fondo podėlis      | Fondas rikiuojamas tik jam pasikeitus; kiekvienas kandidatas maišo savo kopiją. Trys testai tikrina pridėjimą, pašalinimą ir pakeitimą išlaikant fondo dydį.                                                                                                          |
 
-**Matavimo sąlygos:** Windows x64 (10.0.26300), Intel i7-13650HX, 20 loginių procesorių, .NET SDK 10.0.302 / runtime 10.0.10, `Release`. Lyginta nurodyta `v0.2` atskaita ir dabartinė `v0.3` su podėliu. Tie patys duomenys, maiša, seed ir biudžetai; po 5 matavimus, versijų tvarką kaitaliojant. Lentelėje – vidurkis ± imties standartinis nuokrypis.
+**Bendros matavimo sąlygos:** Windows x64 (10.0.26300), Intel i7-13650HX, 20 loginių procesorių, .NET SDK 10.0.302 / runtime 10.0.10, `Release`. Pateikti nauji abiejų versijų matavimai su tuo pačiu atnaujintu benchmark kodu. Kiekvienai versijai ir režimui – po 5 matavimus, režimų tvarką kaitaliojant; versijos matuotos atskiromis serijomis. Lentelėse – vidurkis ± imties standartinis nuokrypis.
 
-| Matas                                 | `v0.2`          | Dabartinis `v0.3`          |
-|---------------------------------------|-----------------|----------------------------|
-| Fiksuoto darbo sparta, mln. bandymų/s | 0,691 ± 0,008   | 18,782 ± 0,215 (**×27,2**) |
-| Nuoseklus kasimas, ms                 | 580,4 ± 20,9    | 55,8 ± 6,8                 |
-| Nuoseklus visas vykdymas, ms          | 2 500,9 ± 127,0 | 1 707,1 ± 106,0            |
-| Lygiagretus kasimas, ms               | 223,9 ± 20,6    | 51,4 ± 5,5                 |
-| Lygiagretus visas vykdymas, ms        | 2 362,8 ± 224,8 | 1 843,7 ± 163,7            |
+### Fiksuoto darbo sparta
 
-[BlockChain.Bench](BlockChain.Bench/Program.cs) abiem versijoms vykdė tas pačias 5 antraštes po 2 mln. bandymų, difficulty 9. Prieš kiekvieną matavimą – po 100 000 apšilimo bandymų antraštei. Viso rinkinio matavimai: 1 000 vartotojų, 10 000 transakcijų, difficulty 3, seed `676767` / `676768`; prieš kiekvienos versijos ir režimo seriją atliktas atskiras neįskaičiuotas vykdymas. Kiekvienas vykdymas pradėtas naujame procese. Matuotas `Runner` laikas, įskaitant jo JIT sąnaudas; generavimas, failų įrašymas, papildoma rezultatų patikra ir konsolė neįtraukti.
+Abu režimai apdorojo tas pačias 5 antraštes po 2 mln. bandymų (iš viso **10 mln.**), difficulty **9**. Nuosekliai antraštės apdorojamos viena po kitos; lygiagrečiai – po vieną antraštę penkiuose darbuotojuose. Visi darbuotojai turi baigti savo bandymus. Prieš matavimus abu režimai apšildomi po 100 000 bandymų antraštei. Laikas apima užduočių paleidimą ir sulaukimą, bet ne konsolės išvedimą.
 
-**Rezultatas:** fiksuoto darbo kasimas spartesnis ×27,2, visas nuoseklus vykdymas sutrumpėjo **31,7 %**. Su difficulty 3 v0.3 lygiagretus visas vykdymas vidutiniškai buvo **8,0 % ilgesnis** už nuoseklų: kasimas sudaro mažą viso darbo dalį. Šis atskirų vidurkių skirtumas nėra garantuotas pagreitėjimas ar sulėtėjimas kituose vykdymuose.
+| Matas                                  | `v0.2`             | `v0.3`         |
+|----------------------------------------|--------------------|----------------|
+| Nuosekli sparta, mln. bandymų/s        | 0,464 ± 0,095      | 19,120 ± 0,321 |
+| Lygiagreti sparta, mln. bandymų/s      | 2,063 ± 0,075      | 80,728 ± 6,146 |
+| Nuoseklus 10 mln. bandymų laikas, ms   | 22 122,3 ± 3 550,4 | 523,1 ± 8,7    |
+| Lygiagretus 10 mln. bandymų laikas, ms | 4 852,4 ± 186,3    | 124,5 ± 9,9    |
 
-Lygiagrečiuose v0.3 matavimuose įtraukta 9 997–9 999 transakcijų, liko 1–3; visuose išliko 507 275 047 vienetai. Laimėtojai ir bandymų kiekis skiriasi, todėl režimų laikai nėra vienodo atlikto darbo spartos matas. Nuosekliuose vykdymuose visada įtraukta 9 999, liko 1.
+**Rezultatas:** pagal vidutinę bandymų spartą v0.3 buvo **×41,2** spartesnė nuosekliai ir **×39,1** lygiagrečiai. Pagal vidutinių laikų santykį lygiagretus režimas prieš nuoseklų pagreitėjo **×4,56 v0.2** ir **×4,20 v0.3**. v0.2 nuoseklių matavimų sklaida didelė: pirmas vykdymas truko 15,8 s, likę – 23,6–23,8 s. Visi penki įtraukti; šie santykiai aprašo pateiktas vykdymų serijas.
+
+### Visos simuliacijos laikai
+
+**1 000 vartotojų, 10 000 transakcijų, difficulty 3**, generavimo / atrankos seed `676767` / `676768`, tie patys kandidatų biudžetai. Duomenys sugeneruojami vieną kartą; kiekvienas vykdymas pradeda nuo pradinės būsenos. Abu režimai apšildomi viename procese prieš penkis matavimus. Kasimo laikas apima sprendimų paiešką ir koordinavimą, visas laikas – `Runner` vykdymą. Generavimas ir konsolės išvedimas neįtraukti; failai nerašomi.
+
+| Matas                          | `v0.2`         | `v0.3`       |
+|--------------------------------|----------------|--------------|
+| Nuoseklus kasimas, ms          | 832,5 ± 6,3    | 12,6 ± 0,3   |
+| Nuoseklus visas vykdymas, ms   | 3 143,6 ± 17,0 | 980,9 ± 20,7 |
+| Lygiagretus kasimas, ms        | 239,3 ± 17,3   | 12,2 ± 0,6   |
+| Lygiagretus visas vykdymas, ms | 2 553,3 ± 41,5 | 985,5 ± 14,5 |
+
+**Rezultatas:** v0.3 visas vykdymas sutrumpėjo **68,8 % nuosekliai** ir **61,4 % lygiagrečiai**. v0.3 nuoseklus ir lygiagretus bendri laikai artimi: jų vidurkiai skiriasi tik **0,5 %**, mažiau už matavimų sklaidą. Tai nėra įrodymas, kad vienas režimas visada greitesnis.
+
+Visuose pateiktuose simuliacijos vykdymuose įtraukta **9 999** transakcijų, liko **1**; lėšų suma – **507 275 047**. Lygiagrečiai skiriasi laimėtojai ir bandymų kiekis, todėl simuliacijos laikai nematuoja vienodo darbo kiekio spartos. Tam skirta pirmoji lentelė.
 
 **Ribos ir atmesti pasiūlymai:** maišos algoritmas ir blokų formatas išlaikyti palyginamumui; tikrintuve paliktas pilnas maišavimas. Podėliui reikia papildomo masyvo, o dviejų maišavimo kelių atitiktį saugo testai. Transakcijų turinį tikrina fondas, nes demonstracijoje tyčia yra netinkamų mokėjimų.
 
