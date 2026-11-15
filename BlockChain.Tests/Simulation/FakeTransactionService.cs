@@ -40,7 +40,7 @@ internal sealed class FakeTransactionService : ITransactionService
             return new AdmissionResult(false, reason, reason.ToString());
         }
 
-        session.Pending.Add(transaction.TransactionId, transaction);
+        session.AddPending(transaction);
         return new AdmissionResult(true, TransactionReason.None, "Added to pool.");
     }
 
@@ -97,7 +97,7 @@ internal sealed class FakeTransactionService : ITransactionService
 
         session.Ledger = prepared.ProposedLedger!;
         foreach (string id in prepared.IncludedIds)
-            session.Pending.Remove(id);
+            session.RemovePending(id);
     }
 
     public IReadOnlyList<RemainingTransaction> ExplainRemaining(TransactionSession session)

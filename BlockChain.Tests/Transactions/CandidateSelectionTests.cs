@@ -116,6 +116,68 @@ public class CandidateSelectionTests
             second.SelectedTransactions.Select(t => t.TransactionId));
     }
 
+    [Fact]
+    public void SelectCandidate_AfterAddingPayment_IncludesNewPayment()
+    {
+        Transaction first = TestTransactions.Create(A, B, 10, 1);
+        Transaction second = TestTransactions.Create(A, C, 10, 2);
+        TransactionSession session = CreateSession(first);
+
+        Assert.Single(_service.SelectCandidate(
+            session, new Random(7), 100).SelectedTransactions);
+
+        Assert.True(_service.AddToPool(session, second).Accepted);
+
+        CandidateSelection selection = _service.SelectCandidate(
+            session, new Random(7), 100);
+
+        Assert.Equal(2, selection.SelectedTransactions.Count);
+        Assert.Contains(first, selection.SelectedTransactions);
+        Assert.Contains(second, selection.SelectedTransactions);
+    }
+
+    [Fact]
+    public void SelectCandidate_AfterCommit_ExcludesConfirmedPayment()
+    {
+        Transaction first = TestTransactions.Create(A, B, 10, 1);
+        Transaction second = TestTransactions.Create(A, C, 10, 2);
+        TransactionSession session = CreateSession(first, second);
+
+        _service.SelectCandidate(session, new Random(7), 100);
+
+        ApplyResult prepared = _service.PrepareApply([first], session.Ledger);
+        Assert.True(prepared.Success);
+        _service.CommitAccepted(session, prepared);
+
+        CandidateSelection selection = _service.SelectCandidate(
+            session, new Random(7), 100);
+
+        Assert.Equal(second, Assert.Single(selection.SelectedTransactions));
+        Assert.Contains(first.TransactionId, session.Ledger.ConfirmedTransactionIds);
+    }
+
+    [Fact]
+    public void SelectCandidate_AfterPoolChangesAtSameCount_UsesCurrentPayment()
+    {
+        Transaction first = TestTransactions.Create(A, B, 10, 1);
+        Transaction second = TestTransactions.Create(A, C, 10, 2);
+        TransactionSession session = CreateSession(first);
+
+        _service.SelectCandidate(session, new Random(7), 100);
+
+        Assert.True(_service.AddToPool(session, second).Accepted);
+
+        ApplyResult prepared = _service.PrepareApply([first], session.Ledger);
+        Assert.True(prepared.Success);
+        _service.CommitAccepted(session, prepared);
+        Assert.Single(session.PendingTransactions);
+
+        CandidateSelection selection = _service.SelectCandidate(
+            session, new Random(7), 100);
+
+        Assert.Equal(second, Assert.Single(selection.SelectedTransactions));
+    }
+
     private TransactionSession CreateSession(params Transaction[] pending)
         => CreateSession([A, B, C], pending);
 
