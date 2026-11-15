@@ -575,17 +575,6 @@ Kaip veikia įkėlimas:
 
 - **Claude Code** (modelis Claude Opus 5.5, Anthropic), nuo 2026-10-28, naudojo IvarasJoma. Įrankiui kaip užklausos buvo pateiktos žingsninės specifikacijos; jis parašė blokų modelius, antraštės maišą, `tx_root` ir Merkle medį, genesis bloką, kasėją, bloko tikrintoją, priėmimą į grandinę, vykdymo ciklą, ataskaitą ir jos formatavimą, paleidimo režimus ir `blocks.csv`, v0.2 validacijos testus, `v0.3` patobulinimus ir šį README. Kiekvienas žingsnis prieš commit buvo sukompiliuotas ir patikrintas testais; kasimas papildomai patikrintas išmatavus bandymų pasiskirstymą, o pakartojimai – palyginus `blocks.csv`.
 
-**`v0.3` užklausų žurnalas** (Claude Code, Claude Opus 5.5; įrankis turėjo prieigą prie viso repozitorijos kodo ir užduoties PDF):
-
-| Data | Užklausa (originalo kalba) | Kas gauta ir kaip panaudota |
-|---|---|---|
-| 2026-11-05 | „what could i do for v0.3“ | Trys kryptys su įrodymų planu: (1) kasimo ciklo greitis, (2) išsaugotų įvesčių patikra, (3) testų aprėptis. Įrankis pats paleido `--replay` su sugadintu `inputs.json` ir parodė, kad programa nulūžta kodu 134. Pasirinktos 1 ir 2 kryptys. |
-| 2026-11-11 | „what is required from v0.3“ | Užduoties 5 ir 6 skyrių reikalavimų santrauka (užfiksuota `v0.2`, bent du patobulinimai, žurnalas, atskiri commit, ≥ 5 matavimai su sklaida). |
-| 2026-11-11 | „sugeneruok readme ir pridek utxo modeli“ | Šio README pagrindas. Sugeneruotas UTXO modelis į projektą neįtrauktas – nuspręsta laiką skirti `v0.3`. |
-| 2026-11-11 | „revert the utxo, implement v0.3 instead“ | Abiejų krypčių kodas ir testai, `BlockChain.Bench` matavimo įrankis, `v0.2`/`v0.3` matavimai ir [palyginimo skyrius](#v03-palyginimas-su-v02). Priimti ir atmesti pasiūlymai bei jų patikra aprašyti ten. |
-
-> TODO: nurodyti DI įrankius, naudotus transakcijų servisui, kandidatų koordinatoriui, lygiagrečiam kasimui ir maišos funkcijai, ir pridėti užklausų žurnalą (arba glaustą sąveikos žurnalą) su datomis.
-
 ## Narių indėliai
 
 | Narys | Darbai |
