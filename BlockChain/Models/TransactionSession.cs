@@ -4,7 +4,10 @@ namespace BlockChain.Models;
 
 public sealed class TransactionSession
 {
-    internal Dictionary<string, Transaction> Pending { get; } = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Transaction> _pending = new(StringComparer.Ordinal);
+    private Transaction[]? _sortedPending;
+
+    internal IReadOnlyDictionary<string, Transaction> Pending => PendingTransactions;
 
     internal List<RejectedSubmission> Rejections { get; } = [];
     
@@ -32,8 +35,33 @@ public sealed class TransactionSession
         Ledger = ledger;
         InitialTotal = initialTotal;
         
-        PendingTransactions = new ReadOnlyDictionary<string, Transaction>(Pending);
+        PendingTransactions = new ReadOnlyDictionary<string, Transaction>(_pending);
         
         RejectedSubmissions = Rejections.AsReadOnly();
+    }
+
+    internal void AddPending(Transaction transaction)
+    {
+        _pending.Add(transaction.TransactionId, transaction);
+        _sortedPending = null;
+    }
+
+    internal bool RemovePending(string transactionId)
+    {
+        if (!_pending.Remove(transactionId))
+            return false;
+
+        _sortedPending = null;
+        return true;
+    }
+
+    internal Transaction[] CopySortedPending()
+    {
+        _sortedPending ??= _pending.Values
+            .OrderBy(transaction => transaction.TransactionId, StringComparer.Ordinal)
+            .ToArray();
+
+        // Each candidate shuffles its own array.
+        return (Transaction[])_sortedPending.Clone();
     }
 }

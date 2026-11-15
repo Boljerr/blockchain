@@ -304,7 +304,7 @@ public sealed class TransactionService : ITransactionService
                 "Transaction is already pending.");
         }
 
-        session.Pending.Add(transaction.TransactionId, transaction);
+        session.AddPending(transaction);
 
         return new AdmissionResult(true, TransactionReason.None, "Added to pool.");
     }
@@ -318,8 +318,7 @@ public sealed class TransactionService : ITransactionService
         ArgumentNullException.ThrowIfNull(selectionRandom);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxCount);
 
-        Transaction[] candidates =
-            session.Pending.Values.OrderBy(t => t.TransactionId, StringComparer.Ordinal).ToArray();
+        Transaction[] candidates = session.CopySortedPending();
         for (int i = candidates.Length - 1; i > 0; i--)
         {
             int j = selectionRandom.Next(i + 1);
@@ -521,7 +520,7 @@ public sealed class TransactionService : ITransactionService
 
         foreach (var id in prepared.IncludedIds)
         {
-            session.Pending.Remove(id);
+            session.RemovePending(id);
         }
     }
     public IReadOnlyList<RemainingTransaction> ExplainRemaining(
